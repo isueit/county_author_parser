@@ -1,0 +1,47 @@
+<?php
+
+function format_county($cty) {
+  $uc = ucwords(trim($cty));
+  //Uppercase for words after apostrophe
+  $parts = explode("'", $uc);
+  for ($i=0; $i < count($parts); $i++) {
+    $parts[$i] = ucfirst($parts[$i]);
+  }
+  return implode("'", $parts);
+}
+
+function county_author_parser_install() {
+  $dir = DRUPAL_ROOT . '/' . drupal_get_path('module', 'county_author_parser') . '/data/';
+  $files = \Drupal::service('file_system')->scanDirectory($dir, '/\.(txt)/');
+  //Use first file found
+  $path = array_keys($files)[0];
+  $counties_objs = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->loadTree('counties_in_iowa');
+  $counties = [];
+  foreach ($counties_objs as $key => $value) {
+    $counties[$value->name] = $value->tid;
+  }
+  \Drupal::logger('county_author_parser')->notice(serialize($counties_objs));
+  \Drupal::logger('county_author_parser')->notice(serialize($counties));
+
+  if ($file = fopen($path, 'r')) {
+    while (!feof($file)) {
+      $term = preg_split("/\s/", fgets($file), 2);
+      $netid = $term[0];
+      $county = format_county($term[1]);
+      \Drupal::logger('county_author_parser')->notice($netid . "|" . $county);
+      if ($netid != "") {
+        $nodes = \Drupal::entityTypeManager()
+          ->getStorage('node')
+          ->loadByProperties(['type' => 'staff_profile', 'field_staff_profile_netid' => $netid]);
+        if ($node = reset($nodes)) {
+          if (!in_array($counties["$county"], array_column($node->field_staff_profile_cty_author->getValue(), 'target_id'))) {
+            $node->field_staff_profile_cty_author[] = ['target_id' => $counties["$county"]];
+            $node->save();
+          }
+
+
+        }
+      }
+    }
+  }
+}

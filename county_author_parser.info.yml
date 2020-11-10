@@ -1,0 +1,8 @@
+name: 'County Author Parser'
+type: module
+description: 'Parses tab delimited file into staff_profile field_staff_profile_cty_author'
+core: '8.x'
+version: '8.x-1.0-dev'
+package: 'ISUEO'
+dependencies:
+  - staff_profile
