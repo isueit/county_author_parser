@@ -2,12 +2,20 @@
 
 function format_county($cty) {
   $uc = ucwords(trim($cty));
-  //Uppercase for words after apostrophe
-  $parts = explode("'", $uc);
-  for ($i=0; $i < count($parts); $i++) {
-    $parts[$i] = ucfirst($parts[$i]);
+  if (preg_match('/[Pp]ottawattamie/', $uc)) {
+    //Rearrange Pottawattamie county to format in taxonomy
+    $parts = explode(" ", $uc);
+    return $parts[1] . " - " . $parts[0];
+  } elseif (preg_match('/[\']/', $uc)) {
+    //Capitalize O'Brien
+    $parts = explode("'", $uc);
+    for ($i=0; $i < count($parts); $i++) {
+      $parts[$i] = ucfirst($parts[$i]);
+    }
+    return implode("'", $parts);
+  } else {
+    return $uc;
   }
-  return implode("'", $parts);
 }
 
 function county_author_parser_install() {
@@ -20,26 +28,40 @@ function county_author_parser_install() {
   foreach ($counties_objs as $key => $value) {
     $counties[$value->name] = $value->tid;
   }
-  \Drupal::logger('county_author_parser')->notice(serialize($counties_objs));
-  \Drupal::logger('county_author_parser')->notice(serialize($counties));
+
+  $qual_objs = \Drupal::entityTypeManager()->getStorage('taxonomy_term')->loadTree('editor_qualifications');
+  $qualifications = [];
+  foreach ($qual_objs as $key => $value) {
+    $qualifications[$value->name] = $value->tid;
+  }
 
   if ($file = fopen($path, 'r')) {
     while (!feof($file)) {
       $term = preg_split("/\s/", fgets($file), 2);
       $netid = $term[0];
       $county = format_county($term[1]);
-      \Drupal::logger('county_author_parser')->notice($netid . "|" . $county);
       if ($netid != "") {
+        \Drupal::logger('county_author_parser')->notice($counties["$county"]);
         $nodes = \Drupal::entityTypeManager()
           ->getStorage('node')
           ->loadByProperties(['type' => 'staff_profile', 'field_staff_profile_netid' => $netid]);
         if ($node = reset($nodes)) {
+          //Add county author
           if (!in_array($counties["$county"], array_column($node->field_staff_profile_cty_author->getValue(), 'target_id'))) {
             $node->field_staff_profile_cty_author[] = ['target_id' => $counties["$county"]];
-            $node->save();
           }
 
+          //Add Drupal 6 Training qualification
+          if (!in_array($qualifications["Drupal 6 Training"], array_column($node->field_staff_profile_quals->getValue(), 'target_id'))) {
+            $node->field_staff_profile_quals[] = ['target_id' => $qualifications["Drupal 6 Training"]];
+          }
 
+          //Add Web editor qualification
+          if (!in_array($qualifications["Web Editor"], array_column($node->field_staff_profile_quals->getValue(), 'target_id'))) {
+            $node->field_staff_profile_quals[] = ['target_id' => $qualifications["Web Editor"]];
+          }
+
+          $node->save();
         }
       }
     }
